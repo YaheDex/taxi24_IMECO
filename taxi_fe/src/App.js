@@ -8,9 +8,10 @@ function App() {
   return (
     <div className="App">
       <Customer username="luciano"/>
-      <Driver username="frodo"/>
-      <Driver username="merry"/>
-      <Driver username="samwise"/>
+      {/* <Customer username="dex"/> */}
+      <Driver username="equidelol"/>
+      <Driver username="alekock"/>
+      <Driver username="alonsex"/>
     </div>
   );
 }
