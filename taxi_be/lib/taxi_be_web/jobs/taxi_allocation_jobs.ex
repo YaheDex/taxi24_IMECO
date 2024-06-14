@@ -7,10 +7,10 @@ defmodule TaxiBeWeb.TaxiAllocationJob do
 
   def init(request) do
     Process.send(self(), :step1, [:nosuspend])
-    {:ok, %{request: request, status: Waiting}}
+    {:ok, %{request: request, status: :not_accepted, contacted_taxi: nil}}
   end
 
-  def handle_info(:step1, %{request: request, status: Waiting} = state) do
+  def handle_info(:step1, %{request: request} = state) do
     # Select a taxi
     # taxi = Enum.take_random(candidate_taxis(), 1) |> hd()
 
@@ -36,7 +36,7 @@ defmodule TaxiBeWeb.TaxiAllocationJob do
     #      bookingId: booking_id
     #     })
 
-    {:noreply, %{request: request, candidates: taxis}}
+    {:noreply, state |> Map.put(:candidates, taxis)}
   end
 
   def handle_info(:block1, %{request: request, candidates: taxis} = state) do
@@ -57,7 +57,8 @@ defmodule TaxiBeWeb.TaxiAllocationJob do
           })
 
     Process.send_after(self(), :timeout1, 2000)
-    {:noreply, %{request: request, candidates: tl(taxis), contacted_taxi: taxi, status: Waiting}}
+    Map.put(state, :contacted_taxi, taxi)
+    {:noreply, %{state | contacted_taxi: taxi, request: request, candidates: tl(taxis)}}
   else
     {:noreply, state}
   end
@@ -68,18 +69,23 @@ defmodule TaxiBeWeb.TaxiAllocationJob do
     {:noreply, state}
   end
 
-  def handle_cast({:process_accept, driver_name}, %{request: request, status: Waiting} = state) do
+  def handle_cast({:process_accept, driver_name}, %{request: request, status: :not_accepted, contacted_taxi: taxi} = state) do
     IO.inspect(request)
     IO.inspect(state.status)
     %{"username" => username} = request
     # TaxiBeWeb.Endpoint.broadcast("customer: " <> username, "booking_request", %{msg: "Tu taxi esta en camino"})
-    task = Task.async(fn -> compute_ride_fare(request) |> notify_customer_ride_driverinfo(driver_name) end)
+    task = Task.async(fn -> notify_customer_ride_driverinfo(taxi, request) end)
     Task.await(task)
-    {:noreply, %{state | status: Accepted}}
+    new_state = Map.put(state, :status, :accepted)
+    IO.inspect(new_state.status)
+    {:noreply, new_state}
   end
 
-  def handle_cast({:process_accepted, driver_name}, %{request: request, status: Accepted, contacted_taxi: taxi} = state) do
-    TaxiBeWeb.Endpoint.broadcast("driver:" <> taxi.nickname, "booking_request", %{msg: "Viaje aceptado por alguien más"})
+  def handle_cast({:process_accept, driver_name}, %{request: request, status: :accepted} = state) do
+    IO.inspect(state.request)
+    IO.inspect(state.status)
+    %{"username" => username} = request
+    TaxiBeWeb.Endpoint.broadcast("driver:" <> driver_name, "booking_request", %{msg: "Viaje aceptado por alguien más"})
     {:noreply, state}
   end
 
@@ -96,6 +102,7 @@ defmodule TaxiBeWeb.TaxiAllocationJob do
 
     coord1 = TaxiBeWeb.Geolocator.geocode(pickup_address)
     coord2 = TaxiBeWeb.Geolocator.geocode(dropoff_address)
+    # IO.puts(coord1)
     {distance, duration} = TaxiBeWeb.Geolocator.distance_and_duration(coord1, coord2)
     {request, distance, Float.ceil(duration/60)}
   end
@@ -105,9 +112,17 @@ defmodule TaxiBeWeb.TaxiAllocationJob do
    TaxiBeWeb.Endpoint.broadcast("customer:" <> customer, "booking_request", %{msg: "Ride fare: #{Float.ceil(fare/80)}"})
   end
 
-  def notify_customer_ride_driverinfo({request, distance, duration}, drivername) do
+  def notify_customer_ride_driverinfo(driver, request) do
+    %{
+      "pickup_address" => pickup_address,
+      "dropoff_address" => dropoff_address
+     } = request
+
+    coord1 = TaxiBeWeb.Geolocator.geocode(pickup_address)
     %{"username" => customer} = request
-   TaxiBeWeb.Endpoint.broadcast("customer:" <> customer, "booking_request", %{msg: "Driver #{drivername} is: #{distance} meters away from you, will arrive in #{duration} minutes"})
+    taxicoords = {:ok, [driver.longitude, driver.latitude]}
+    {distance, duration} = TaxiBeWeb.Geolocator.distance_and_duration(taxicoords, coord1)
+   TaxiBeWeb.Endpoint.broadcast("customer:" <> customer, "booking_request", %{msg: "Driver #{driver.nickname} is: #{distance} meters away from you, will arrive in #{Float.ceil(duration/80)} minutes"})
   end
 
   def select_candidate_taxis(%{"pickup_address" => _pickup_address}) do
