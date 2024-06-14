@@ -56,7 +56,7 @@ defmodule TaxiBeWeb.TaxiAllocationJob do
           bookingId: booking_id
           })
 
-    Process.send_after(self(), :timeout1, 2000)
+    Process.send_after(self(), :timeout1, 20000)
     Map.put(state, :contacted_taxi, taxi)
     {:noreply, %{state | contacted_taxi: taxi, request: request, candidates: tl(taxis)}}
   else
