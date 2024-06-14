@@ -122,7 +122,7 @@ defmodule TaxiBeWeb.TaxiAllocationJob do
     %{"username" => customer} = request
     taxicoords = {:ok, [driver.longitude, driver.latitude]}
     {distance, duration} = TaxiBeWeb.Geolocator.distance_and_duration(taxicoords, coord1)
-   TaxiBeWeb.Endpoint.broadcast("customer:" <> customer, "booking_request", %{msg: "Driver #{driver.nickname} is: #{distance} meters away from you, will arrive in #{Float.ceil(duration/80)} minutes"})
+   TaxiBeWeb.Endpoint.broadcast("customer:" <> customer, "booking_request", %{msg: "Driver #{driver.nickname} is: #{distance} meters away from you, will arrive in #{Float.ceil(duration/60)} minutes"})
   end
 
   def select_candidate_taxis(%{"pickup_address" => _pickup_address}) do
